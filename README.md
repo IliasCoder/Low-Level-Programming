@@ -35,7 +35,6 @@ Depending on the project, you might need:
 - **NASM / GAS** — for assembling low-level programs.
 - **Make** — to run provided `Makefile`s.
 - A **POSIX-like environment** (Linux/macOS, or WSL on Windows).
-- Curiosity and a willingness to break things.
 
 ### Cloning the Repo
 ```bash
