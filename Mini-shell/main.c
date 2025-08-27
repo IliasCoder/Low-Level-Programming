@@ -28,6 +28,7 @@ int my_strlen(const char *str);
 char *my_strdup(const char *str);
 int my_strcmp(const char *s1, const char *s2);
 void my_strcpy(char *dest, const char *src);
+void trim_whitespaces(char *str);
 
 // Signal handler
 void handle_sigint(int sig);
@@ -48,6 +49,29 @@ int my_strlen(const char *str) {
         len++;
     }
     return len;
+}
+//trim whitespaces function
+void trim_whitespace(char *str) {
+    if (!str) return;
+    
+    // Remove trailing whitespace
+    int len = my_strlen(str);
+    while (len > 0 && (str[len-1] == ' ' || str[len-1] == '\t' || str[len-1] == '\n' || str[len-1] == '\r')) {
+        str[--len] = '\0';
+    }
+    
+    // Remove leading whitespace
+    int start = 0;
+    while (str[start] == ' ' || str[start] == '\t') start++;
+    
+    if (start > 0) {
+        int i = 0;
+        while (str[start + i] != '\0') {
+            str[i] = str[start + i];
+            i++;
+        }
+        str[i] = '\0';
+    }
 }
 
 /**
