@@ -459,4 +459,21 @@ void shell_loop(Shell *shell) {
 
 }
 
+// Next fork() and exec() needs to be implemented.
 
+/*
+    The process flow will be the following:
+            Parent Shell Process
+                     |
+                fork() called
+                     |
+                __________________
+               |                  |
+            child process         Parent process
+               |                  | 
+               excec("ls")        wait() for child
+               |                  |
+               becomes "ls"       child completes
+               |                  |  
+               exit()            continues shell loop
+*/
