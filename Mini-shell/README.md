@@ -49,30 +49,7 @@ Intuitive prompt - Clear command prompt with shell identification
 Backspace support - Visual character deletion during input
 Input validation - Filters non-printable characters
 Help system - Built-in help command with usage instructions
-🏗️ Architecture
-                                                                                                        ┌─────────────────────────────────────────────────────────────┐
-                                                                                                        │                           Mini-Shell                        │
-                                                                                                        ├─────────────────────────────────────────────────────────────┤
-                                                                                                        │  User Input Layer                                           │
-                                                                                                        │  ├── Command Reading (read_command)                         │
-                                                                                                        │  ├── Input Validation & Echoing                             │
-                                                                                                        │  └── Whitespace Trimming                                    │
-                                                                                                        ├─────────────────────────────────────────────────────────────┤
-                                                                                                        │  Command Processing Layer                                   │
-                                                                                                        │  ├── Command Parsing (parse_command)                        │
-                                                                                                        │  ├── Argument Separation                                    │
-                                                                                                        │  └── History Management (circular buffer)                   │
-                                                                                                        ├─────────────────────────────────────────────────────────────┤
-                                                                                                        │  Execution Layer                                            │
-                                                                                                        │  ├── Built-in Commands (cd, pwd, help, etc.)                │
-                                                                                                        │  ├── External Commands (fork/exec/wait)                     │
-                                                                                                        │  └── History Replay (!!, !n)                                │
-                                                                                                        ├─────────────────────────────────────────────────────────────┤
-                                                                                                        │  System Interface Layer                                     │
-                                                                                                        │  ├── Process Management                                     │
-                                                                                                        │  ├── Signal Handling (SIGINT, SIGCHLD)                      │
-                                                                                                        │  └── Memory Management                                      │
-                                                                                                        └─────────────────────────────────────────────────────────────┘
+
 
 🔧 Installation
 Prerequisites
@@ -86,28 +63,24 @@ cd Mini-Shell
 
 # Compile with recommended flags
 gcc -Wall -Wextra -std=c99 -o myshell main.c
-
-# Alternative: Use the provided Makefile
-make
+or
+gcc <source-code-file-name>.c -o <output-file-name>
 
 # Run the shell
-./myshell
+./output-file-name
+
 
 Compilation Options
 # Debug build with symbols
 gcc -Wall -Wextra -std=c99 -g -DDEBUG -o myshell improved_shell.c
 
-# Optimized release build
-gcc -Wall -Wextra -std=c99 -O2 -DNDEBUG -o myshell improved_shell.c
 
-# Static linking (for portability)
-gcc -Wall -Wextra -std=c99 -static -o myshell main.c
 
 🚀 Usage
 Starting the Shell
 $ ./myshell
 Welcome to this Mini-Shell!
-Enhanced Mini-Shell v2.0 - Type 'help' for commands
+Mini-Shell  - Type 'help' for commands
 mini-shell> 
 
 Basic Command Execution
@@ -234,99 +207,6 @@ void add_to_history(Shell *shell, const char *command) {
     shell->history_count++;
 }
 
-
-Key Components
-Component	Lines of Code	Responsibility
-String Functions	~80	Custom string manipulation
-Memory Management	~60	Allocation and cleanup
-Command Parsing	~100	Input tokenization
-Process Execution	~120	Fork/exec/wait logic
-History Management	~90	Circular buffer operations
-Built-in Commands	~110	Shell built-ins
-I/O Operations	~70	Low-level input/output
-Signal Handling	~40	Interrupt management
-🧠 Memory Management
-Allocation Strategy
-Explicit allocation for all dynamic memory
-Reference counting for shared resources
-Immediate cleanup on errors
-Comprehensive leak detection
-Memory Usage Patterns
-// Pattern 1: Safe string duplication
-char *safe_copy = my_strdup(original);
-if (!safe_copy) {
-    handle_error();
-    return;
-}
-// Use safe_copy...
-free(safe_copy);
-
-// Pattern 2: Circular buffer management
-if (buffer_full) {
-    free(oldest_entry);        // Free before overwrite
-    oldest_entry = NULL;       // Prevent double-free
-}
-buffer[index] = new_entry;     // Store new data
-
-Leak Prevention Checklist
-✅ Every malloc() has corresponding free()
-✅ NULL pointer checks before all operations
-✅ Cleanup on all exit paths
-✅ Signal handler cleanup
-✅ Child process resource management
-⚡ Signal Handling
-Supported Signals
-Signal	Handler	Behavior
-SIGINT (Ctrl+C)	handle_sigint	Interrupt current input, show new prompt
-SIGCHLD	handle_sigchld	Reap zombie child processes
-Signal Safety
-// Async-signal-safe operations only
-void handle_sigint(int sig) {
-    (void)sig;
-    write(STDOUT_FILENO, "\n", 1);           // Safe
-    write(STDOUT_FILENO, PROMPT, strlen(PROMPT)); // Safe
-    // No malloc(), printf(), or other unsafe functions
-}
-
-
-# Individual test categories
-./tests/basic_tests.sh      # Basic functionality
-./tests/memory_tests.sh     # Memory leak detection
-./tests/stress_tests.sh     # Performance and stability
-
-Manual Testing Checklist
-Basic Functionality
- Shell starts and shows prompt
- Simple commands execute (ls, pwd, date)
- Built-in commands work (cd, help, history)
- Command arguments are parsed correctly
- Exit command terminates shell
-History System
- Commands are added to history
- History displays correctly
- !! repeats last command
- !n repeats specific command
- Circular buffer overwrites oldest entries
-Error Handling
- Invalid commands show error messages
- Memory allocation failures are handled
- Signal interrupts are handled gracefully
- Child process failures are reported
-Memory Management
- No memory leaks (test with valgrind)
- Proper cleanup on exit
- Signal handler doesn't leak memory
-Performance Benchmarks
-# Memory usage test
-valgrind --leak-check=full ./myshell
-
-# Performance test
-time ./tests/stress_tests.sh
-
-# Expected results:
-# - Memory usage: < 1MB baseline
-# - Command execution: < 10ms overhead
-# - History operations: O(1) complexity
 
 
 
