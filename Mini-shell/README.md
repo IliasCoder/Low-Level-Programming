@@ -50,29 +50,29 @@ Backspace support - Visual character deletion during input
 Input validation - Filters non-printable characters
 Help system - Built-in help command with usage instructions
 🏗️ Architecture
-┌─────────────────────────────────────────────────────────────┐
-│                           Mini-Shell                        │
-├─────────────────────────────────────────────────────────────┤
-│  User Input Layer                                           │
-│  ├── Command Reading (read_command)                         │
-│  ├── Input Validation & Echoing                             │
-│  └── Whitespace Trimming                                    │
-├─────────────────────────────────────────────────────────────┤
-│  Command Processing Layer                                   │
-│  ├── Command Parsing (parse_command)                        │
-│  ├── Argument Separation                                    │
-│  └── History Management (circular buffer)                   │
-├─────────────────────────────────────────────────────────────┤
-│  Execution Layer                                            │
-│  ├── Built-in Commands (cd, pwd, help, etc.)                │
-│  ├── External Commands (fork/exec/wait)                     │
-│  └── History Replay (!!, !n)                                │
-├─────────────────────────────────────────────────────────────┤
-│  System Interface Layer                                     │
-│  ├── Process Management                                     │
-│  ├── Signal Handling (SIGINT, SIGCHLD)                      │
-│  └── Memory Management                                      │
-└─────────────────────────────────────────────────────────────┘
+                                                                                                        ┌─────────────────────────────────────────────────────────────┐
+                                                                                                        │                           Mini-Shell                        │
+                                                                                                        ├─────────────────────────────────────────────────────────────┤
+                                                                                                        │  User Input Layer                                           │
+                                                                                                        │  ├── Command Reading (read_command)                         │
+                                                                                                        │  ├── Input Validation & Echoing                             │
+                                                                                                        │  └── Whitespace Trimming                                    │
+                                                                                                        ├─────────────────────────────────────────────────────────────┤
+                                                                                                        │  Command Processing Layer                                   │
+                                                                                                        │  ├── Command Parsing (parse_command)                        │
+                                                                                                        │  ├── Argument Separation                                    │
+                                                                                                        │  └── History Management (circular buffer)                   │
+                                                                                                        ├─────────────────────────────────────────────────────────────┤
+                                                                                                        │  Execution Layer                                            │
+                                                                                                        │  ├── Built-in Commands (cd, pwd, help, etc.)                │
+                                                                                                        │  ├── External Commands (fork/exec/wait)                     │
+                                                                                                        │  └── History Replay (!!, !n)                                │
+                                                                                                        ├─────────────────────────────────────────────────────────────┤
+                                                                                                        │  System Interface Layer                                     │
+                                                                                                        │  ├── Process Management                                     │
+                                                                                                        │  ├── Signal Handling (SIGINT, SIGCHLD)                      │
+                                                                                                        │  └── Memory Management                                      │
+                                                                                                        └─────────────────────────────────────────────────────────────┘
 
 🔧 Installation
 Prerequisites
@@ -338,41 +338,7 @@ it is highly recommended to use a UNIX-based OS like MacOs or Linux. WSL on wind
 # Create development branch
 git checkout -b feature/your-feature-name
 
-# Build and test
-make clean && make
-make test
 
-# Submit pull request
-
-Coding Standards
-C99 standard compliance
-POSIX compatibility for system calls
-Comprehensive error checking
-Memory leak prevention
-Clear documentation for all functions
-📈 Future Enhancements
-Planned Features
- Command piping (cmd1 | cmd2)
- I/O redirection (cmd > file, cmd < file)
- Background processes (cmd &)
- Environment variables (export, $VAR)
- Tab completion for commands and files
- Configuration file support
- Scripting support (execute shell scripts)
- Job control (jobs, fg, bg)
-Performance Optimizations
- Command caching for frequently used programs
- Lazy loading of built-in commands
- Memory pool allocation for small objects
- Asynchronous I/O for large outputs
-📊 Project Statistics
-Total Lines of Code: ~800
-Functions: 25+
-Built-in Commands: 8
-Memory Management Functions: 6
-Test Cases: 50+
-Documentation: Comprehensive
-🏆 Learning Outcomes
 
 
 
@@ -390,4 +356,3 @@ SOFTWARE.
 
 Report Bug • Request Feature • Contribute
 
-Made with ❤️ and lots of ☕
