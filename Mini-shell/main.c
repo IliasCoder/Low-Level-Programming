@@ -1,20 +1,33 @@
-#include<stdio.h>
-#include<stdlib.h>
-#include<unistd.h>
-#include<signal.h>
-
-// configuration constants
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/wait.h>    // Added for waitpid()
+#include <string.h>      // Added for getenv() support
+//unix-based
+// Configuration constants
 #define MAX_COMMAND_LENGTH 256
 #define HISTORY_SIZE 10
-#define MAX_SIZE  100
-#define PROMPT "mini-shell>"
+#define MAX_ARGS 64          // Added for command parsing
+#define PROMPT "mini-shell> "
 
-typedef struct{
-    char **history; //array of command strings
-    int history_count; // total number of commands entered
-    int history_start;//start index for circular buffer
-    int current_size;// current number of commands in history
-}Shell;
+// Shell structure
+typedef struct {
+    char **history;          // Array of command strings
+    int history_count;       // Total number of commands entered
+    int history_start;       // Start index for circular buffer
+    int current_size;        // Current number of commands in history
+} Shell;
+
+// Command structure for parsing - NEW
+typedef struct {
+    char **args;            // Array of argument strings
+    int argc;              // Number of arguments
+} Command;
+
+// Function prototypes
 void init_shell(Shell *shell);
 void cleanup_shell(Shell *shell);
 void shell_loop(Shell *shell);
@@ -22,25 +35,34 @@ int read_command(char *buffer, int max_len);
 void add_to_history(Shell *shell, const char *command);
 void print_history(Shell *shell);
 void execute_command(Shell *shell, const char *command);
+void print_string(const char *str);
+char *get_history_command(Shell *shell, int cmd_num);
+void trim_whitespace(char *str);  // NEW
+
+// Command parsing and execution - NEW
+Command *parse_command(const char *input);
+void free_command(Command *cmd);
+int execute_external_command(Command *cmd);
+int is_builtin_command(const char *command);
+void execute_builtin(Shell *shell, Command *cmd);
 
 // Custom string functions
 int my_strlen(const char *str);
 char *my_strdup(const char *str);
 int my_strcmp(const char *s1, const char *s2);
 void my_strcpy(char *dest, const char *src);
-void trim_whitespaces(char *str);
 
-// Signal handler
+// Signal handlers
 void handle_sigint(int sig);
+void handle_sigchld(int sig);  // NEW
+
+// Global shell pointer for signal handler
+Shell *global_shell = NULL;
 
 // ============================================================================
-// CUSTOM STRING FUNCTIONS - No standard library dependencies
+// CUSTOM STRING FUNCTIONS 
 // ============================================================================
 
-/**
- * Calculate string length manually
- * Learning: Pointer arithmetic and null terminator detection
- */
 int my_strlen(const char *str) {
     int len = 0;
     if (!str) return 0;
@@ -50,34 +72,7 @@ int my_strlen(const char *str) {
     }
     return len;
 }
-//trim whitespaces function
-void trim_whitespace(char *str) {
-    if (!str) return;
-    
-    // Remove trailing whitespace
-    int len = my_strlen(str);
-    while (len > 0 && (str[len-1] == ' ' || str[len-1] == '\t' || str[len-1] == '\n' || str[len-1] == '\r')) {
-        str[--len] = '\0';
-    }
-    
-    // Remove leading whitespace
-    int start = 0;
-    while (str[start] == ' ' || str[start] == '\t') start++;
-    
-    if (start > 0) {
-        int i = 0;
-        while (str[start + i] != '\0') {
-            str[i] = str[start + i];
-            i++;
-        }
-        str[i] = '\0';
-    }
-}
 
-/**
- * Copy string from source to destination
- * Learning: Manual memory copying and bounds awareness
- */
 void my_strcpy(char *dest, const char *src) {
     if (!dest || !src) return;
     
@@ -86,14 +81,9 @@ void my_strcpy(char *dest, const char *src) {
         dest[i] = src[i];
         i++;
     }
-    dest[i] = '\0';  // Don't forget null terminator!
+    dest[i] = '\0';  // Never forget the null terminator!
 }
 
-/**
- * Compare two strings
- * Learning: Character-by-character comparison
- * Returns: 0 if equal, negative if s1 < s2, positive if s1 > s2
- */
 int my_strcmp(const char *s1, const char *s2) {
     if (!s1 || !s2) return (s1 == s2) ? 0 : (s1 ? 1 : -1);
     
@@ -107,10 +97,6 @@ int my_strcmp(const char *s1, const char *s2) {
     return s1[i] - s2[i];
 }
 
-/**
- * Duplicate a string (allocate new memory)
- * Learning: Manual memory allocation and error handling
- */
 char *my_strdup(const char *str) {
     if (!str) return NULL;
     
@@ -126,292 +112,428 @@ char *my_strdup(const char *str) {
     return dup;
 }
 
+// ============================================================================
+// UTILITY FUNCTIONS 
+// ============================================================================
 
-
-
-
-int main(){
-    printf("Welcome to the Text File Analyzer!\n");
-    // there is going to be an input loop that will continue until the user decides to exit
-    // it'll store all the input in a dynamically allocated array of strings
-    //np strcpy(), no strlen() they should be reimplemented
-    //Circular buffer will be used to store the input
-    // it will keep memory usage constant while allowing for dynamic input and keeping track of input history
-
+void trim_whitespace(char *str) {
+    if (!str) return;
     
-    Shell shell;
-//set up signal handler for SIGINT
-    signal(SIGINT, handle_sigint);
-    // Initialize our shell
-    init_shell(&shell);
-    
-    // Main shell loop
-    shell_loop(&shell);
-    
-    // Cleanup
-    cleanup_shell(&shell);
-
-    return 0;
-
-}
-//Shell initialization and cleanup
-
-
-void init_shell(Shell *shell){
-    if(!shell) return; // check for null pointer
-    shell->history = malloc(HISTORY_SIZE * sizeof(char *));
-    if (!shell->history) {
-        write(STDERR_FILENO,"Failed to allocate memory for shell history\n",34);
-        exit(1);
+    // Remove trailing whitespace
+    int len = my_strlen(str);
+    while (len > 0 && (str[len-1] == ' ' || str[len-1] == '\t' || 
+                       str[len-1] == '\n' || str[len-1] == '\r')) {
+        str[--len] = '\0';
     }
-    // Initialize history pointers to null
-    for (int i = 0; i < HISTORY_SIZE; i++) {
-        shell->history[i] = NULL;
+    
+    // Remove leading whitespace
+    int start = 0;
+    while (str[start] == ' ' || str[start] == '\t') {
+        start++;
     }
-    shell->history_count = 0;
-    shell->history_start = 0;
-    shell->current_size = 0;
-
-    write(STDOUT_FILENO, "Shell v1.0 initialized - Type 'exit' to quit\n", 42);
-
-
-
+    
+    if (start > 0) {
+        int i = 0;
+        while (str[start + i] != '\0') {
+            str[i] = str[start + i];
+            i++;
+        }
+        str[i] = '\0';
+    }
 }
 
-/*
-
-clean up allocated memory
-
-
-
-
-*/
-void cleanup_shell(Shell *shell){
-    if(!shell || !shell->history) return; // check for null pointer
-    //free all allocated command strings
-    for (int i = 0; i < HISTORY_SIZE; i++)
-    {
-        free(shell->history[i]);
-        shell->history[i] = NULL; // set to NULL after freeing
-    }
-    //free the history array itself
-    free(shell->history);
-    shell->history = NULL; // set to NULL after freeing
-    write(STDOUT_FILENO, "Shell cleanup complete\n", 24);
+void print_string(const char *str) {
+    if (!str) return;
+    write(STDOUT_FILENO, str, my_strlen(str));
 }
 
-// Implementing Low level I/O functions
-int read_command(char *buffer, int max_len){
-    if (!buffer || max_len<=0)
-    {
+// ============================================================================
+// COMMAND PARSING 
+// ============================================================================
+
+Command *parse_command(const char *input) {
+    if (!input) return NULL;
+    
+    Command *cmd = malloc(sizeof(Command));
+    if (!cmd) return NULL;
+    
+    cmd->args = malloc(MAX_ARGS * sizeof(char*));
+    if (!cmd->args) {
+        free(cmd);
+        return NULL;
+    }
+    
+    cmd->argc = 0;
+    
+    // Create working copy
+    char *input_copy = my_strdup(input);
+    if (!input_copy) {
+        free(cmd->args);
+        free(cmd);
+        return NULL;
+    }
+    
+    // Simple tokenization by spaces
+    char *token_start = NULL;
+    int in_token = 0;
+    
+    for (int i = 0; input_copy[i] != '\0' && cmd->argc < MAX_ARGS - 1; i++) {
+        if (input_copy[i] != ' ' && input_copy[i] != '\t') {
+            if (!in_token) {
+                token_start = &input_copy[i];
+                in_token = 1;
+            }
+        } else {
+            if (in_token) {
+                input_copy[i] = '\0';
+                cmd->args[cmd->argc] = my_strdup(token_start);
+                cmd->argc++;
+                in_token = 0;
+            }
+        }
+    }
+    
+    // Handle last token
+    if (in_token && cmd->argc < MAX_ARGS - 1) {
+        cmd->args[cmd->argc] = my_strdup(token_start);
+        cmd->argc++;
+    }
+    
+    // Null-terminate argument array
+    cmd->args[cmd->argc] = NULL;
+    
+    free(input_copy);
+    return cmd;
+}
+
+void free_command(Command *cmd) {
+    if (!cmd) return;
+    
+    for (int i = 0; i < cmd->argc; i++) {
+        if (cmd->args[i]) {
+            free(cmd->args[i]);
+        }
+    }
+    free(cmd->args);
+    free(cmd);
+}
+
+// ============================================================================
+// PROCESS EXECUTION - FORK/EXEC IMPLEMENTATION
+// ============================================================================
+
+int execute_external_command(Command *cmd) {
+    if (!cmd || cmd->argc == 0) return -1;
+    
+    print_string("Executing: ");
+    print_string(cmd->args[0]);
+    print_string("\n");
+    
+    pid_t pid = fork();
+    
+    if (pid == 0) {
+        // Child process
+        if (execvp(cmd->args[0], cmd->args) == -1) {
+            write(STDERR_FILENO, "Command not found: ", 19);
+            write(STDERR_FILENO, cmd->args[0], my_strlen(cmd->args[0]));
+            write(STDERR_FILENO, "\n", 1);
+            exit(127);
+        }
+    } else if (pid > 0) {
+        // Parent process
+        int status;
+        pid_t waited_pid = waitpid(pid, &status, 0);
+        
+        if (waited_pid == -1) {
+            write(STDERR_FILENO, "Error waiting for child\n", 24);
+            return -1;
+        }
+        
+        if (WIFEXITED(status)) {
+            int exit_code = WEXITSTATUS(status);
+            if (exit_code != 0) {
+                char msg[] = "Command exited with code: X\n";
+                msg[26] = '0' + (exit_code % 10);
+                write(STDOUT_FILENO, msg, 28);
+            }
+            return exit_code;
+        }
+    } else {
+        // Fork failed
+        write(STDERR_FILENO, "Fork failed\n", 12);
         return -1;
     }
-    int pos = 0;
-    char ch;
-    while(pos<max_len-1){
-        //leave space for null terminator "max_len-1"
-        ssize_t bytes_read = read(STDIN_FILENO, &ch,1);
-        if (bytes_read<=0)
-        {
-            return -1;
-            /* code */
-
-        }
-        if (ch == '\n')
-        {
-            // if the current character is a new line character we stop
-            break;
-            /* code */
-        }
-        if (ch=='\b' || ch ==127){
-            if (pos>0)
-            {
-                pos--;
-                write(STDOUT_FILENO,&ch,1);
-                /* code */
-            }
-            continue;
-            
-        }
-        
-    }
-    buffer[pos] = '\0';
-    write(STDOUT_FILENO,"\n",1);
-    return pos;
     
-}
-
-/**
- * Print a string using low-level write()
- * Learning: Manual string output without printf
- */
-
-void print_string(const char *str){
-    // we pass the pointer to the string because strings in C are stored as arrays. and arrays cannot be passed by value
-    /*
-    Passing a pointer allows the function to access the original string data stored in memory, regardless of its length.
-     If you tried to pass the whole array by value, 
-    only the address would be passed, not the contents, and the function wouldn’t know how much data to print.
-    
-    */
-    if (!str) return;
-    write(STDOUT_FILENO,str,my_strlen(str));
-
-
+    return 0;
 }
 
 // ============================================================================
-// CIRCULAR BUFFER HISTORY MANAGEMENT
+// BUILT-IN COMMANDS 
 // ============================================================================
 
-/**
- * Add command to circular history buffer
- * Learning: Circular buffer logic and memory reuse
- */
-
-void add_to_history(Shell *shell, const char *command)
-{
-    if(!shell || !command || my_strlen(command)==0) return ;
-    //calculate the string where the command will be stored
-    int index = (shell->history_start + shell->current_size) % HISTORY_SIZE;
-    /*
-    let's say we have a buffer of size 5
-    [0][1][2][3][4]
-    our current size is at 5
-    and history_start will always be at the first command we stored
-    so for this example
-    index = (0+5)%5=0; so the oldest command will be overwritten with the newest one.
+int is_builtin_command(const char *command) {
+    if (!command) return 0;
     
-    */
-   // if the buffer is full we need to free the oldest command
-   if (shell->current_size == HISTORY_SIZE)
-   {
-    if(shell->history[shell->history_start]){
-        free(shell->history[shell->history_start]);
-    }
-    shell->history_start = (shell->history_start+1)%HISTORY_SIZE;
-   }else{
-    shell->current_size++;
-   }
-   
-   //store the new command
-   shell->history[index] = my_strdup(command);
-   shell->history_count++;
-
+    return (my_strcmp(command, "exit") == 0 ||
+            my_strcmp(command, "history") == 0 ||
+            my_strcmp(command, "clear") == 0 ||
+            my_strcmp(command, "cd") == 0 ||
+            my_strcmp(command, "pwd") == 0 ||
+            my_strcmp(command, "help") == 0);
 }
-/**
- * Print command history
- * Learning: Circular buffer traversal
- */
 
-void print_history(Shell *shell){
-    if(!shell) return;
-    print_string("command history:\n");
-    if (shell->current_size==0)
-    {
-        print_string("no cammands yet :-) \n");
-        return;
-        for (int i = 0; i < shell->current_size; i++)
-        {
-            int index = (shell->history_start+1)%HISTORY_SIZE;
-            if(shell->history[index]){
-                char num_str[16];
-                int cmd_num = shell->history_count -shell->current_size + i + 1;
-                // integer to string conversion
-                int len = 0;
-                int temp = cmd_num;
-                do
-                {
-                    num_str[len++] = '0' + (temp%10);
-                    temp/=10;
-                    /* code */
-                } while (temp>0);
-            // reverse the string
-            for (int j = 0; j < len/2; j++)
-            {
-                char swap = num_str[j];
-                num_str[j] = num_str[len - 1 - j];
-                num_str[len - 1 - j] = swap;
-            }    
-            num_str[len] = '\0';
-            print_string(" ");
-            print_string(num_str);
-            print_string(": ");
-            print_string(shell->history[index]);
-            print_string("\n");
-            }
-            
-
-            
-            /* code */
-        }
-        
-    }
+void execute_builtin(Shell *shell, Command *cmd) {
+    if (!shell || !cmd || cmd->argc == 0) return;
     
-}
-
-// ============================================================================
-// COMMAND EXECUTION AND HISTORY REPLAY
-// ============================================================================
- 
-/**
- * Get command from history by number
- * Learning: History indexing and bounds checking
- */
-
-
-char *get_history_command(Shell *shell, int cmd_num){
-    if(!shell || cmd_num<=0) return NULL;
-    int relative_pos = cmd_num -(shell->history_count - shell->current_size+1);
-    if (relative_pos <0 || relative_pos>=shell->current_size)
-    {
-        return NULL; // i.e command number out of range
-    }
-    int index = (shell->history_start + relative_pos) % HISTORY_SIZE;
-    return shell->history[index];
-}
-/**
- * Execute a command (built-ins and history replay)
- * Learning: Command parsing and execution logic
- */
-void execute_command(Shell *shell ,const char *command){
-    if(!shell|| !command) return;
-    //skip empty commands
-    if(my_strlen(command) == 0) return;
-    //handle built-in commands
-    if (my_strcmp(command,"exit")==0){
-        print_string("Exiting shell.....\n");
+    if (my_strcmp(cmd->args[0], "exit") == 0) {
+        print_string("Exiting shell...\n");
         cleanup_shell(shell);
         exit(0);
     }
-    if (my_strcmp(command, "history") == 0) {
+    
+    if (my_strcmp(cmd->args[0], "history") == 0) {
         print_history(shell);
         return;
     }
     
-    if (my_strcmp(command, "clear") == 0) {
-        write(STDOUT_FILENO, "\033[2J\033[H", 7);  // ANSI clear screen
+    if (my_strcmp(cmd->args[0], "clear") == 0) {
+        write(STDOUT_FILENO, "\033[2J\033[H", 7);
         return;
     }
-    //handle history replay commands
+    
+    if (my_strcmp(cmd->args[0], "cd") == 0) {
+        if (cmd->argc < 2) {
+            char *home = getenv("HOME");
+            if (home && chdir(home) != 0) {
+                write(STDERR_FILENO, "cd: cannot change to home\n", 27);
+            }
+        } else {
+            if (chdir(cmd->args[1]) != 0) {
+                write(STDERR_FILENO, "cd: cannot change directory\n", 29);
+            }
+        }
+        return;
+    }
+    
+    if (my_strcmp(cmd->args[0], "pwd") == 0) {
+        char cwd[1024];
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            print_string(cwd);
+            print_string("\n");
+        } else {
+            write(STDERR_FILENO, "pwd: error\n", 11);
+        }
+        return;
+    }
+    
+    if (my_strcmp(cmd->args[0], "help") == 0) {
+        print_string("Built-in commands:\n");
+        print_string("  exit     - Exit shell\n");
+        print_string("  history  - Show history\n");
+        print_string("  clear    - Clear screen\n");
+        print_string("  cd [dir] - Change directory\n");
+        print_string("  pwd      - Print working directory\n");
+        print_string("  help     - Show this help\n");
+        print_string("  !!       - Repeat last command\n");
+        print_string("  !n       - Repeat command n\n");
+        return;
+    }
+}
+
+// ============================================================================
+// SHELL INITIALIZATION AND CLEANUP 
+// ============================================================================
+
+void init_shell(Shell *shell) {
+    if (!shell) return;
+    
+    shell->history = malloc(HISTORY_SIZE * sizeof(char*));
+    if (!shell->history) {
+        write(STDERR_FILENO, "Failed to allocate memory for shell history\n", 44);
+        exit(1);
+    }
+    
+    // Initialize history pointers to NULL
+    for (int i = 0; i < HISTORY_SIZE; i++) {
+        shell->history[i] = NULL;
+    }
+    
+    shell->history_count = 0;
+    shell->history_start = 0;
+    shell->current_size = 0;
+    
+    global_shell = shell;  // Set global pointer
+    
+    write(STDOUT_FILENO, " Mini-Shell - Type 'help' for commands\n", 38);
+}
+
+void cleanup_shell(Shell *shell) {
+    if (!shell || !shell->history) return;
+    
+    // Free all allocated command strings
+    for (int i = 0; i < HISTORY_SIZE; i++) {
+        if (shell->history[i]) {  // Only free non-NULL pointers
+            free(shell->history[i]);
+            shell->history[i] = NULL;
+        }
+    }
+    
+    // Free the history array itself
+    free(shell->history);
+    shell->history = NULL;
+    
+    write(STDOUT_FILENO, "Shell cleanup complete!\n", 33);
+}
+
+// ============================================================================
+// I/O FUNCTIONS 
+// ============================================================================
+
+int read_command(char *buffer, int max_len) {
+    if (!buffer || max_len <= 0) return -1;
+    
+    int pos = 0;
+    char ch;
+    
+    while (pos < max_len - 1) {
+        ssize_t bytes_read = read(STDIN_FILENO, &ch, 1);
+        
+        if (bytes_read <= 0) return -1;
+        
+        if (ch == '\n') break;
+        
+        if (ch == '\b' || ch == 127) {  // Backspace
+            if (pos > 0) {
+                pos--;
+                write(STDOUT_FILENO, "\b \b", 3);  // Erase character visually
+            }
+            continue;
+        }
+        
+        if (ch >= 32 && ch <= 126) {  // Printable characters only
+            buffer[pos++] = ch;
+            write(STDOUT_FILENO, &ch, 1);  // Echo character back 
+        }
+    }
+    
+    buffer[pos] = '\0';
+    write(STDOUT_FILENO, "\n", 1);
+    
+    trim_whitespace(buffer);  // Clean up input
+    return my_strlen(buffer);
+}
+
+// ============================================================================
+// HISTORY MANAGEMENT 
+// ============================================================================
+
+void add_to_history(Shell *shell, const char *command) {
+    if (!shell || !command || my_strlen(command) == 0) return;
+    
+    // Don't add history commands to history
+    if (command[0] == '!' || my_strcmp(command, "history") == 0) return;
+    
+    int index = (shell->history_start + shell->current_size) % HISTORY_SIZE;
+    
+    if (shell->current_size == HISTORY_SIZE) {
+        if (shell->history[shell->history_start]) {
+            free(shell->history[shell->history_start]);
+        }
+        shell->history_start = (shell->history_start + 1) % HISTORY_SIZE;
+    } else {
+        shell->current_size++;
+    }
+    
+    shell->history[index] = my_strdup(command);
+    shell->history_count++;
+}
+
+void print_history(Shell *shell) {  
+    if (!shell) return;
+    
+    print_string("Command History:\n");
+    
+    if (shell->current_size == 0) {
+        print_string("  (no commands yet)\n");
+        return;
+    }
+    
+    for (int i = 0; i < shell->current_size; i++) {
+        int index = (shell->history_start + i) % HISTORY_SIZE;  
+        if (shell->history[index]) {
+            char num_str[16];
+            int cmd_num = shell->history_count - shell->current_size + i + 1;
+            
+            // Integer to string conversion
+            int len = 0;
+            int temp = cmd_num;
+            if (temp == 0) {
+                num_str[len++] = '0';
+            } else {
+                while (temp > 0) {
+                    num_str[len++] = '0' + (temp % 10);
+                    temp /= 10;
+                }
+            }
+            
+            // Reverse the string
+            for (int j = 0; j < len / 2; j++) {
+                char swap = num_str[j];
+                num_str[j] = num_str[len - 1 - j];
+                num_str[len - 1 - j] = swap;
+            }
+            num_str[len] = '\0';
+            
+            print_string("  ");
+            print_string(num_str);
+            print_string(": ");
+            print_string(shell->history[index]);
+            print_string("\n");
+        }
+    }
+}
+
+char *get_history_command(Shell *shell, int cmd_num) {
+    if (!shell || cmd_num <= 0) return NULL;
+    
+    int relative_pos = cmd_num - (shell->history_count - shell->current_size + 1);
+    
+    if (relative_pos < 0 || relative_pos >= shell->current_size) {
+        return NULL;
+    }
+    
+    int index = (shell->history_start + relative_pos) % HISTORY_SIZE;
+    return shell->history[index];
+}
+
+// ============================================================================
+// COMMAND EXECUTION 
+// ============================================================================
+
+void execute_command(Shell *shell, const char *command) {
+    if (!shell || !command || my_strlen(command) == 0) return;
+    
+    // Handle history replay - FIXED to prevent infinite recursion
     if (command[0] == '!') {
+        if (my_strlen(command) == 1) {
+            print_string("Usage: !! (last) or !n (number)\n");
+            return;
+        }
+        
+        char *target_cmd = NULL;
+        
         if (command[1] == '!') {
-            /*!! - repeat last command*/
+            /*!! - repeat last command*/ 
             if (shell->current_size > 0) {
                 int last_index = (shell->history_start + shell->current_size - 1) % HISTORY_SIZE;
-                char *last_cmd = shell->history[last_index];
-                if (last_cmd) {
-                    print_string("Executing: ");
-                    print_string(last_cmd);
-                    print_string("\n");
-                    execute_command(shell, last_cmd);
-                }
+                target_cmd = shell->history[last_index];
             } else {
                 print_string("No previous command\n");
+                return;
             }
-            return;
         } else {
-            /* ! n - repeat command number n*/
+            /*  !n - repeat 
+            command number n */
             int cmd_num = 0;
             int i = 1;
             while (command[i] >= '0' && command[i] <= '9') {
@@ -419,50 +541,70 @@ void execute_command(Shell *shell ,const char *command){
                 i++;
             }
             
-            char *hist_cmd = get_history_command(shell, cmd_num);
-            if (hist_cmd) {
-                print_string("Executing: ");
-                print_string(hist_cmd);
-                print_string("\n");
-                execute_command(shell, hist_cmd);
-            } else {
-                print_string("Command not found in history\n");
+            if (cmd_num == 0) {
+                print_string("Invalid command number\n");
+                return;
             }
-            return;
+            
+            target_cmd = get_history_command(shell, cmd_num);
         }
-
+        
+        if (target_cmd) {
+            print_string("Executing: ");
+            print_string(target_cmd);
+            print_string("\n");
+            execute_command(shell, target_cmd);  // Recursive call with actual command
+        } else {
+            print_string("Command not found in history\n");
+        }
+        return;
+    }
+    
+    // Parse command into arguments
+    Command *cmd = parse_command(command);
+    if (!cmd || cmd->argc == 0) {
+        if (cmd) free_command(cmd);
+        return;
+    }
+    
+    // Execute built-in or external command
+    if (is_builtin_command(cmd->args[0])) {
+        execute_builtin(shell, cmd);
+    } else {
+        execute_external_command(cmd);
+    }
+    
+    free_command(cmd);
 }
-    // For other commands, just echo them (in a practical shell, i should execute them)
-    print_string("command executed!");
-    print_string(command);
-    print_string("\n");    
 
-}
 // ============================================================================
-// MAIN SHELL LOOP AND SIGNAL HANDLING
+// SIGNAL HANDLING 
 // ============================================================================
 
-/**
- * Signal handler for Ctrl+C
- * Learning: Signal handling and graceful interruption
- */
-void handle_sigint(int sig){
-    (void)sig;  // Suppress unused parameter warning
-    write(STDOUT_FILENO, "\n" PROMPT, my_strlen(PROMPT) + 1);
+void handle_sigint(int sig) {
+    (void)sig;
+    write(STDOUT_FILENO, "\n", 1);
+    if (global_shell) {
+        write(STDOUT_FILENO, PROMPT, my_strlen(PROMPT));
+    }
 }
 
-/**
- * Main shell loop
- * Learning: Event loop pattern and user interaction
- */
+void handle_sigchld(int sig) {
+    (void)sig;
+    // Reap zombie children
+    while (waitpid(-1, NULL, WNOHANG) > 0);
+}
+
+// ============================================================================
+// MAIN SHELL LOOP 
+// ============================================================================
+
 void shell_loop(Shell *shell) {
     char command_buffer[MAX_COMMAND_LENGTH];
     
     while (1) {
-        // Print prompt
         print_string(PROMPT);
         
-        // Read command
         int cmd_len = read_command(command_buffer, MAX_COMMAND_LENGTH);
         
         if (cmd_len < 0) {
@@ -470,34 +612,29 @@ void shell_loop(Shell *shell) {
             continue;
         }
         
-        if (cmd_len == 0) {
-            continue;  // Empty command
-        }
+        if (cmd_len == 0) continue;  // Empty command
         
-        // Add to history (before execution to handle recursive calls)
         add_to_history(shell, command_buffer);
-        
-        // Execute command
         execute_command(shell, command_buffer);
     }
-
 }
 
-// Next fork() and exec() needs to be implemented.
+// ============================================================================
+// MAIN FUNCTION 
+// ============================================================================
 
-/*
-    The process flow will be the following:
-            Parent Shell Process
-                     |
-                fork() called
-                     |
-                __________________
-               |                  |
-            child process         Parent process
-               |                  | 
-               excec("ls")        wait() for child
-               |                  |
-               becomes "ls"       child completes
-               |                  |  
-               exit()            continues shell loop
-*/
+int main() {
+    printf("Welcome to the Mini-Shell!\n");
+    
+    Shell shell;
+    
+    // Set up signal handlers
+    signal(SIGINT, handle_sigint);    // Handle Ctrl+C
+    signal(SIGCHLD, handle_sigchld);  // Handle child processes
+    
+    init_shell(&shell);
+    shell_loop(&shell);
+    cleanup_shell(&shell);
+    
+    return 0;
+}
