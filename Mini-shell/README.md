@@ -16,11 +16,17 @@ Perfect for understanding operating systems internals, process management, and s
 
 ✨ Features
 🚀 Core Functionality
+
 Real command execution - Execute system programs with arguments
+
 Interactive command line - Full terminal interaction with character echoing
+
 Command history - Circular buffer storing last 10 commands
+
 History replay - Execute previous commands with !! and !n
+
 Built-in commands - Essential shell operations
+
 Process management - Proper child process handling and cleanup
 🛠️ Advanced Features
 Custom string functions - No dependency on string.h
