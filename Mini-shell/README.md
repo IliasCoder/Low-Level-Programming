@@ -2,21 +2,6 @@ Mini-Shell
 
 A fully-functional, lightweight command-line shell implementation in C, featuring custom memory management, circular buffer history, and real process execution capabilities.
 
-📋 Table of Contents
-Overview
-Features
-Architecture
-Installation
-Usage
-Built-in Commands
-Technical Implementation
-Code Structure
-Memory Management
-Signal Handling
-Testing
-Contributing
-License
-🎯 Overview
 
 This project implements a production-ready mini-shell from scratch in C, demonstrating advanced systems programming concepts including:
 
