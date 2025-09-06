@@ -17,28 +17,56 @@ Perfect for understanding operating systems internals, process management, and s
 ✨ Features
 🚀 Core Functionality
 
-Real command execution - Execute system programs with arguments
+-Real command execution 
 
-Interactive command line - Full terminal interaction with character echoing
+- Execute system programs with arguments
 
-Command history - Circular buffer storing last 10 commands
+-Interactive command line
 
-History replay - Execute previous commands with !! and !n
+- Full terminal interaction with character echoing
 
-Built-in commands - Essential shell operations
+-Command history 
+
+- Circular buffer storing last 10 commands
+
+-History replay 
+
+- Execute previous commands with !! and !n
+
+-Built-in commands 
+
+- Essential shell operations
 
 Process management - Proper child process handling and cleanup
 🛠️ Advanced Features
+
+
 Custom string functions - No dependency on string.h
+
+
 Memory leak prevention - Comprehensive cleanup and error handling
+
+
 Signal handling - Graceful Ctrl+C handling and zombie process prevention
+
+
 Command parsing - Intelligent argument separation and validation
+
+
 Error reporting - Detailed error messages and exit code reporting
+
+
 Cross-platform compatibility - Works on Linux and Unix-like systems
+
 🎨 User Experience
+
+
 Intuitive prompt - Clear command prompt with shell identification
+
 Backspace support - Visual character deletion during input
+
 Input validation - Filters non-printable characters
+
 Help system - Built-in help command with usage instructions
 
 
